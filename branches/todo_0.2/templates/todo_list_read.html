@@ -1,0 +1,42 @@
+<{include file="$tpl_path/todo_css.html"}>
+<{include file="$tpl_path/todo_js.html"}>
+
+<div id="msg" class="right hide"></div>
+<div id="loading" class="right hide"><img src="<{$myurl}>/images/loading.gif"></div>
+
+<div class="page_title">
+	<div class="left">
+		<h3><{$xoops_pagetitle}></h3>
+	</div>
+	<div class="right">
+		<ul>
+			<{foreach from=$tag_list item=tag name=tag_list}>
+			<li><a href="index.php?kwd=<{$tag.name}>"><{$tag.name}></a></li>
+			<{/foreach}>
+			<li class="last"><a href="index.php">All</a></li>
+		</ul>
+	</div>
+	<div class="clear"></div>
+</div>
+
+<!--  工作一覽 -->
+<div id="page_tasks">
+	<ul class="tasklist" id="tasklist">
+	<{foreach from=$task item=task}>
+		<li class="<{if $task.complete}>task-completed<{/if}>" id="taskrow_<{$task.id}>">
+			<span class="task-through">
+			<span class="task-prio <{$task.prio_class}>"><{$task.priority}></span>
+			<{if $task.tag != ''}><span class="task-title">[<{$task.tag}>]</span><{/if}>
+			<span class="task-title"><{$task.title}></span>
+			<span class="task-date"><{$task.published}></span>
+			<div class="task-note-block<{if $task.note == ''}> hide<{/if}>"><{$task.note}></div>
+			</span>
+		</li>
+	<{foreachelse}>
+		<li class="last">
+		<{if $smarty.get.compl}><{$smarty.const._AM_TODO_NO_COMPLETED_TASK}><{else}><{$smarty.const._AM_TODO_NO_TASK}><{/if}>
+		</li>
+	<{/foreach}>
+	</ul>
+</div>
+

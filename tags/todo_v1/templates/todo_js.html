@@ -1,0 +1,263 @@
+<script type="text/javascript">
+// <![CDATA[
+$(document).ready(function() {
+	$('#tabs ul, #tabs2 ul').idTabs();
+	$('#tasklist').sortable({
+		update : function () { 
+			var order = $('#tasklist').sortable('serialize');
+			$.post('<{$myurl}>/ajax.php?op=change_sort&'+order, function(json){
+			}, 'json');
+		}
+	}); 
+});
+// ]]>
+</script>
+
+<script type="text/javascript">
+// <![CDATA[
+theme = {
+	newTaskFlashColor: '#ffffaa',
+	editTaskFlashColor: '#bbffaa',
+	errorFlashColor: '#ffffff'
+};
+
+//Global vars
+var filterCompl = 0;
+var sortOrder;
+var searchTimer;
+var filterSearch = '';
+//var needAuth = false;
+//var isLogged = false;
+//var canAllRead = true;
+
+// 載入工作資料
+function loadTasks()
+{
+	$.post('<{$myurl}>/ajax.php', {'op':'load', 'compl':filterCompl, 'kwd':encodeURIComponent(filterSearch)}, function(json){
+		$('#total').html(json.total);
+		var tasks = '';
+		$.each(json.list, function(i,item){
+			tasks += prepareTaskStr(item.id, item.tag, item.title, item.published, item.complete, item.note, item.priority);
+		});
+		
+		if (json.total != 0) {
+			$('#tasklist').html(tasks);
+		} else {
+			$('#tasklist').html('<li class="last"><{$smarty.const._AM_TODO_NO_SEARCH}></li>');
+		}
+		
+		if (filterCompl) {
+			showhide($('#compl_hide'),$('#compl_show'));
+		} else {
+			showhide($('#compl_show'),$('#compl_hide'));
+		}
+	}, 'json');
+}
+
+function showhide(a,b)
+{
+	a.show();
+	b.hide();
+}
+
+function filterCompleted(a)
+{
+	//showMessage('');
+	if(a) filterCompl = 1;
+	else filterCompl = 0;
+	loadTasks();
+	//hideMessage();
+	return false;
+}
+
+// 工作模型
+function prepareTaskStr(id, tag, title, published, complete, note, priority)
+{
+	id = parseInt(id);
+	compl = parseInt(complete);
+	prio = parseInt(priority);
+	
+	return '<li id="taskrow_'+id+'"'+(compl?' class="task-completed"':'')+' ondblclick="editTask('+id+')">' +
+		"<span class=\"task-actions\">\n" +
+		"<a href=\"#\" onclick=\"return editTask("+id+")\"><{$smarty.const._EDIT}></a> | \n" +
+		"<a href=\"#\" onclick=\"return deleteTask("+id+")\"><{$smarty.const._DELETE}></a>\n" +
+		"</span>\n" +
+		'<input type="checkbox" onclick="completeTask('+id+',this)" '+ (compl?'checked':'') +'> '+
+		"<span class=\"task-through\">\n" +
+		'<span class="task-prio'+(prio<0?' prio-neg':(prio>0?' prio-pos':' prio-o'))+'">'+(prio<0?'&ndash;'+Math.abs(prio):'+'+prio)+'</span> '+
+		(tag==''? "": "<span class=\"task-tag\">["+tag+"]</span>\n") +
+		"<span class=\"task-title\">"+ title +"</span>\n" +
+		"<span class=\"task-date\">"+ published +"</span>\n" +
+		"</span>\n" +
+		"<div class=\"task-note-block"+(note==''?' hide':'')+"\">"+note+"</div>\n" +
+		"</li>\n";
+}
+
+// 搜尋工作
+function searchTasks()
+{
+	showMessage('<{$smarty.const._AM_TODO_MSG_SEARCH}>');
+	filterSearch = $('input#kwd').val();
+	
+	if (filterSearch != '') $('#searchbarkeyword').text(filterSearch);
+	//else $('#searchbar').fadeOut('fast');
+	loadTasks();
+	hideMessage(1000);
+	return false;
+}
+
+// 新增工作
+function submitNewTask()
+{
+	var $post_form = $('#post_task');
+	var $task_tag = $post_form.find('select[name=tag]');
+	var $task_title = $post_form.find('input[name=title]');
+	
+	if ($task_title.val() == '') {
+		showMessage('<{$smarty.const._AM_TODO_MSG_NEED_TITLE}>');
+		hideMessage(2000);
+	} else {
+		showMessage('<{$smarty.const._AM_TODO_MSG_PROCESS}>');
+		$.post('<{$myurl}>/ajax.php', {'op':'add', 'tag':$task_tag.val(), 'title':$task_title.val()}, function(json){
+			var item = json.list[0];
+			if(!parseInt(json.total)) return;
+			$('#total').text( parseInt($('#total').text()) + parseInt(json.total) );
+			
+			$task_tag.find('option:first').attr('selected', true);
+			$task_title.val('');
+			$('#tasklist').prepend(prepareTaskStr(item.id, item.tag, item.title, item.published, item.complete, item.note, item.priority));
+			$('#taskrow_'+item.id).effect("highlight", {color:theme.newTaskFlashColor}, 2000);
+			hideMessage(1000);
+		}, 'json');
+	}
+	return false;
+}
+
+// 變更完成度
+function completeTask(id, ch)
+{
+	compl = 0;
+	if (ch.checked) compl = 1;
+	showMessage('<{$smarty.const._AM_TODO_MSG_PROCESS}>');
+	$.post('<{$myurl}>/ajax.php', {'op':'complete', 'id': id, 'compl':compl}, function(json){
+		if (!parseInt(json.total)) return;
+		var item = json.list[0];
+		if (item.complete) {
+			$('#taskrow_'+ id).addClass('task-completed');
+		} else {
+			$('#taskrow_'+ id).removeClass('task-completed');
+		}
+		if (item.complete && !filterCompl) {
+			$('#taskrow_'+item.id).fadeOut('normal', function(){ $(this).remove() });
+			$('#total').html( parseInt($('#total').text())-1 );
+		}
+		showMessage(json.message);
+		hideMessage(1000);
+	}, 'json');
+	return false;
+}
+
+// 編輯模式
+function editTask(id)
+{
+	var $edit_form = $('#taskform');
+	showMessage('<{$smarty.const._AM_TODO_MSG_PROCESS}>');
+	$.post('<{$myurl}>/ajax.php', {'op':'get_task', 'id': id}, function(json){
+		//resetAjaxErrorTrigger();
+		if(!parseInt(json.total)) return;
+		var item = json.list[0];
+		$edit_form.find('input[name=id]').val(item.id);
+		$edit_form.find('input[name=title]').val(item.title);
+		$edit_form.find('textarea[name=note]').val(item.note);
+		$edit_form.find('select[name=prio] option').each( function( index ){
+			if ($(this).val()  == item.priority) {
+				$(this).attr('selected', true);
+			}
+		});
+		$edit_form.find('select[name=tag] option').each( function( index ){
+			if ($(this).val()  == item.tag) {
+				$(this).attr('selected', true);
+			}
+		});
+		$('#page_taskedit').fadeIn('fast');
+		$('#page_tasks').hide();
+		showMessage(json.message);
+		hideMessage(1000);
+	}, 'json');
+	return false;
+}
+
+// 儲存資料
+function saveTask()
+{
+	var $edit_form = $('#taskform');
+	var $id_val = $edit_form.find('input[name=id]').val();
+	var $title_val = $edit_form.find('input[name=title]').val();
+	var $note_val  = $edit_form.find('textarea[name=note]').val();
+	var $prio_val  = $edit_form.find('select[name=prio]').val();
+	var $tag_val  = $edit_form.find('select[name=tag]').val();
+	showMessage('<{$smarty.const._AM_TODO_MSG_PROCESS}>');
+	$.post('<{$myurl}>/ajax.php', {'op':'save', 'id':$id_val, 'tag':$tag_val, 'title':$title_val, 'note':$note_val, 'priority':$prio_val }, function(json){
+		if(!parseInt(json.total)) return;
+		var item = json.list[0];
+		$('#taskrow_'+item.id).replaceWith(prepareTaskStr(item.id, item.tag, item.title, item.published, item.complete, item.note, item.priority));
+		$('#taskrow_'+item.id).effect("highlight", {color:theme.editTaskFlashColor}, 'normal');
+		if(item.note == '') $('#taskrow_'+item.id+'>div.task-note-block').addClass('hidden');
+		else $('#taskrow_'+item.id+'>div.task-note-block').removeClass('hidden');
+		showMessage(json.message);
+		hideMessage(1000);
+		cancelEdit();
+	}, 'json');
+	return false;
+}
+
+//取消編輯模式，返回工作一覽
+function cancelEdit()
+{
+	$('#taskform input[name=task]').val('');
+	$('#taskform textarea[name=note]').val('');
+	$('#page_taskedit').hide();
+	$('#page_tasks').show();
+	return false;
+}
+
+// 由 DB 刪除工作
+function deleteTask(id){
+	if (confirm('<{$smarty.const._AM_TODO_MSG_DEL_CHECK}>')){
+		showMessage('<{$smarty.const._AM_TODO_MSG_PROCESS}>');
+		$.ajax({
+			type: 'POST', 
+			url: '<{$myurl}>/ajax.php', 
+			data: 'op=delete&id=' + id,
+			dataType: 'json',
+			async: false,
+			success: function (json){
+				$('#taskrow_' + id).fadeOut('normal', function(){ $(this).remove() });
+				showMessage(json.message);
+				hideMessage(1000);
+			}
+		});
+	}
+	return false;
+}
+
+// 輔助說明
+function showMessage(str)
+{
+	$('#msg').text(str).show();
+	$('#loading').show();
+	//$("#msg").effect("highlight", {color:theme.errorFlashColor}, 700);
+}
+// 隱藏輔助說明 A
+function hideMessage(ms)
+{
+	setTimeout('resetMessage()', ms);
+}
+// 隱藏輔助說明 B
+function resetMessage()
+{
+	$('#loading, #msg').hide();
+}
+
+// ]]>
+</script>

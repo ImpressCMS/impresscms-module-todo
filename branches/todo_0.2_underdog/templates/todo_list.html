@@ -1,0 +1,606 @@
+<{include file="$tpl_path/todo_css.html"}>
+
+<{if $load_jquery}>
+	<{include file="$tpl_path/todo_css2.html"}>
+<{/if}>
+<script type="text/javascript" src="<{$gui_url}>/javascript/jquery.idTabs.js"></script>
+
+
+
+<script type="text/javascript">
+$(document).ready(function() {
+	$('#tabs ul, #tabs2 ul').idTabs();
+
+	$('#tasklist').sortable({
+
+		update : function () {
+
+			var order = $('#tasklist').sortable('serialize');
+
+			$.post('<{$myurl}>/ajax.php?op=change_sort&'+order, function(json){
+				$('#icmsresponse').fadeIn(1500);
+				$('#icmsresponse').html("<div id='icmssuccess'></div>");
+				$('#icmssuccess').append("<img id='checkmark' src='../images/check.png' />");
+				$('#icmssuccess').append(json.message);
+				$('#icmsresponse').fadeOut(2500, function(){
+					//$(this).remove(); // Remove loading gif
+				});
+			}, 'json');
+
+
+			//$('.icmsresponse').remove(); // Remove previous status
+			//$('#icmsresponse').append('<img src="../images/loading.gif" name="load" id="load" alt="Loading, please wait..." />'); // Add loading gif
+
+			/*
+			$.ajax({
+				url: '<{$myurl}>/ajax.php',
+				type: 'POST',
+				data : post_data,
+				dataType: 'json',
+				error: showError,
+				success: function(json)
+				{
+					$('#icmsresponse').fadeIn(1000);
+					$('#icmsresponse').html("<div id='icmssuccess'></div>");
+					$('#icmssuccess').append("<img id='checkmark' src='../images/check.png' />");
+					$('#icmssuccess').append(json.message)
+					$('#icmsresponse').fadeOut(25000, function(){
+						//$(this).remove(); // Remove loading gif
+					});
+				}
+			});
+			*/
+			//return false;
+
+		}
+	});
+});
+
+</script>
+
+<script type="text/javascript">
+theme = {
+	newTaskFlashColor: '#FFFFAA',
+	editTaskFlashColor: '#BBFFAA',
+	errorFlashColor: '#FFFFFF'
+};
+
+//Global vars
+var filterCompl = 0;
+var sortOrder;
+var searchTimer;
+var filterSearch = '';
+//var needAuth = false;
+//var isLogged = false;
+//var canAllRead = true;
+
+
+
+
+function loadTasks()
+{
+	$.post('<{$myurl}>/ajax.php', {'op':'load', 'compl':filterCompl, 'kwd':encodeURIComponent(filterSearch)}, function(json){
+		$('#total').html(json.total);
+		var tasks = '';
+		$.each(json.list, function(i,item){
+			tasks += prepareTaskStr(item.id, item.tag, item.title, item.published, item.complete, item.note, item.priority);
+		});
+		
+		if (json.total != 0) {
+			$('#tasklist').html(tasks);
+		} else {
+			$('#tasklist').html('<li class="last"><{$smarty.const._AM_TODO_NO_SEARCH}></li>');
+		}
+		
+		if (filterCompl) {
+			showhide($('#compl_hide'),$('#compl_show'));
+		} else {
+			showhide($('#compl_show'),$('#compl_hide'));
+		}
+	}, 'json');
+}
+
+function showhide(a,b)
+{
+	a.show();
+	b.hide();
+}
+
+function filterCompleted(a)
+{
+	//showMessage('');
+	if(a) filterCompl = 1;
+	else filterCompl = 0;
+	loadTasks();
+	//hideMessage();
+	return false;
+}
+
+
+function prepareTaskStr(id, tag, title, published, complete, note, priority)
+{
+	id = parseInt(id);
+	compl = parseInt(complete);
+	prio = parseInt(priority);
+
+$('ul.tasklist > li:odd').css('background', '#E9E9E9');
+	
+	var tasknew = '<li id="taskrow_'+ id +'" ondblclick="editTask('+ id +')">' + 
+					'<span class="task-actions">' + 
+						'<a href="#" onclick="return editTask('+ id +')">Edit</a>' + 
+						' | <a href="#" onclick="return deleteTask('+ id +')">Delete</a>' +
+					'</span>' + 
+					'<input type="checkbox" onclick="completeTask('+ id +',this)" />' + 
+					'<span class="task-through">' + 
+						'<span class="task-prio prio-o"></span>' +
+						'<span class="task-title">'+ title +'</span>' +
+						'<span class="task-date">'+ published +'</span>' +
+						'<div class="task-note-block"> </div>' +
+					'</span>' +
+				'</li>';
+				
+	return tasknew;
+}
+
+
+
+
+
+function searchTasks()
+{
+	showMessage('<{$smarty.const._AM_TODO_MSG_SEARCH}>');
+	filterSearch = $('input#kwd').val();
+	
+	if (filterSearch != '') {
+		$('#searchbarkeyword').text(filterSearch);
+		//else $('#searchbar').fadeOut('fast');
+		loadTasks();
+		hideMessage(1000);
+	}
+	return false;
+}
+
+
+
+
+
+function submitNewTask()
+{
+	var $post_form = $('#post_task');
+	var $task_tag = $post_form.find('select[name=tag]');
+	var $task_title = $post_form.find('input[name=title]');
+	
+
+
+	if ($task_title.val() == '') {
+		showMessage('<{$smarty.const._AM_TODO_MSG_NEED_TITLE}>');
+		hideMessage(2000);
+	} else {
+		$('.icmsresponse').remove(); // Remove previous status
+		$('#icmsresponse').append('<img src="../images/loading.gif" name="load" id="load" alt="Loading, please wait..." />'); // Add loading gif
+
+		$.ajax({
+			url: '<{$myurl}>/ajax.php',
+			type: 'POST',
+			data : {'op':'add', 'tag':$task_tag.val(), 'title':$task_title.val()},
+			dataType: 'json',
+			//timeout: 1000,
+			error: showError,
+			success: function(json)
+			{
+				$('#icmsresponse').fadeIn(1000);
+				$('#icmsresponse').html("<div id='icmssuccess'></div>");
+				$('#icmssuccess').append("<img id='checkmark' src='../images/check.png' />");
+				$('#icmssuccess').append(json.message)
+				$('#icmsresponse').fadeOut(2500, function(){
+					//$(this).remove(); // Remove loading gif
+				});
+				
+				var item = json.list[0];
+				if(!parseInt(json.total)) return;
+				//was ist das ??
+				$('#total').text( parseInt($('#total').text()) + parseInt(json.total) ); //update count of tasks
+				$task_tag.find('option:first').attr('selected', true);
+				$task_title.val('');
+				//ende was ist das??
+				
+				//prepareTaskStr ?? where defined??				
+				$('#tasklist').prepend(prepareTaskStr(item.id, item.tag, item.title, item.published, item.complete, item.note, item.priority));
+				$('#taskrow_'+item.id).effect("highlight", {color:theme.newTaskFlashColor}, 2000);
+			}
+		});
+	}
+
+
+
+	return false;
+}
+
+
+function completeTask(id, ch)
+{
+	compl = 0;
+	if (ch.checked) compl = 1;
+	showMessage('<{$smarty.const._AM_TODO_MSG_PROCESS}>');
+	$.post('<{$myurl}>/ajax.php', {'op':'complete', 'id': id, 'compl':compl}, function(json){
+		if (!parseInt(json.total)) return;
+		var item = json.list[0];
+		if (item.complete) {
+			$('#taskrow_'+ id).addClass('task-completed');
+		} else {
+			$('#taskrow_'+ id).removeClass('task-completed');
+		}
+		if (item.complete && !filterCompl) {
+			$('#taskrow_'+item.id).fadeOut('normal', function(){ $(this).remove() });
+			$('#total').html( parseInt($('#total').text())-1 );
+		}
+		showMessage(json.message);
+		hideMessage(1000);
+	}, 'json');
+	return false;
+}
+
+
+
+
+function editTask(id)
+{
+	var $edit_form = $('#taskform');
+	$.post('<{$myurl}>/ajax.php', {'op':'get_task', 'id': id}, function(json){
+		//resetAjaxErrorTrigger();
+		if(!parseInt(json.total)) return;
+		var item = json.list[0];
+		$edit_form.find('input[name=id]').val(item.id);
+		$edit_form.find('input[name=title]').val(item.title);
+		$edit_form.find('textarea[name=note]').val(item.note);
+		$edit_form.find('select[name=prio] option').each( function( index ){
+			if ($(this).val()  == item.priority) {
+				$(this).attr('selected', true);
+			}
+		});
+		$edit_form.find('select[name=tag] option').each( function( index ){
+			if ($(this).val()  == item.tag) {
+				$(this).attr('selected', true);
+			}
+		});
+
+
+		$('#page_taskedit').fadeIn(1000);
+		$('#page_tasks').fadeOut(2500);
+		$('#icmsresponse').html("<div id='icmssuccess'></div>");
+		$('#icmssuccess').append("<img id='checkmark' src='../images/check.png' />");
+		$('#icmssuccess').append(json.message)
+		hideMessage(1000);
+
+
+	}, 'json');
+	return false;
+}
+
+
+
+
+
+function saveTask()
+{
+	var $edit_form = $('#taskform');
+	var $id_val = $edit_form.find('input[name=id]').val();
+	var $title_val = $edit_form.find('input[name=title]').val();
+	var $note_val  = $edit_form.find('textarea[name=note]').val();
+	var $prio_val  = $edit_form.find('select[name=prio]').val();
+	var $tag_val  = $edit_form.find('select[name=tag]').val();
+
+	$('.icmsresponse').remove(); // Remove previous status
+	$('#icmsresponse').append('<img src="../images/loading.gif" name="load" id="load" alt="Loading, please wait..." />'); // Add loading gif
+
+
+	$.ajax({
+		url: '<{$myurl}>/ajax.php',
+		type: 'POST',
+		data : {'op':'save', 'id':$id_val, 'tag':$tag_val, 'title':$title_val, 'note':$note_val, 'priority':$prio_val },
+		dataType: 'json',
+		//timeout: 1000,
+		error: showError,
+		success: function(json)
+		{	
+			$('#icmsresponse').fadeIn(1000);
+			$('#icmsresponse').html("<div id='icmssuccess'></div>");
+			$('#icmssuccess').appendTo("<img id='checkmark' src='../images/check.png' />");
+			$('#icmssuccess').appendTo(json.message)
+			$('#icmsresponse').fadeOut(2500, function(){
+				//$(this).remove(); // Remove loading gif
+			});
+
+			if(!parseInt(json.total)) return;
+			var item = json.list[0];
+			$('#taskrow_'+item.id).replaceWith(prepareTaskStr(item.id, item.tag, item.title, item.published, item.complete, item.note, item.priority));
+			$('#taskrow_'+item.id).effect("highlight", {color:theme.editTaskFlashColor}, 'normal');
+			if(item.note == '') $('#taskrow_'+item.id+'>div.task-note-block').addClass('hidden');
+			else $('#taskrow_'+item.id+'>div.task-note-block').removeClass('hidden');
+			showMessage(json.message);
+			hideMessage(1000);
+			cancelEdit();
+		}
+	});
+
+	return false;
+}
+
+
+
+
+
+
+function cancelEdit()
+{
+	$('#taskform input[name=task]').val('');
+	$('#taskform textarea[name=note]').val('');
+	$('#page_taskedit').hide();
+	$('#page_tasks').show();
+	return false;
+}
+
+
+
+
+function deleteTask(id){
+	$.ajax({
+		type: 'POST', 
+		url: '<{$myurl}>/ajax.php', 
+		data: 'op=delete&id=' + id,
+		dataType: 'json',
+		async: false,
+		error: showError,
+		success: function(json)
+		{	
+			$('#taskrow_' + id).fadeOut('normal', function(){ $(this).remove() });
+			$('#taskrow_' + id).fadeOut('normal', function(){ $(this).remove() });
+			$('#icmsresponse').fadeIn(1000);
+			$('#icmsresponse').html("<div id='icmssuccess'></div>");
+			$('#icmssuccess').append("<img id='checkmark' src='../images/check.png' />");
+			$('#icmssuccess').append(json.message)
+			$('#icmsresponse').fadeOut(2500);
+		}
+	});
+	return false;
+}
+
+
+
+
+
+
+
+
+
+// post-submit callback 
+function showSuccess(responseText, statusText)
+{ 
+	$('#icmsresponse').html("<div id='icmssuccess'></div>");
+	$('#icmssuccess').append("<img id='checkmark' src='../images/check.png' />");
+	$('#icmssuccess').append(responseText)
+}
+
+
+
+
+
+
+
+
+function showError(xhr, ajaxOptions, thrownError)
+{
+	$('#icmsresponse').html("<div id='icmserror' style='background-color:#ffa; padding:20px; border : 5px solid maroon'>Error : </div>");
+	$('#icmserror').append( xhr.status + ' ' + xhr.statusText + ' ' + thrownError)
+}
+
+
+
+
+
+
+
+
+function showFinally(str)
+{
+
+	$('#icmsresponse').show();
+	$('#icmsresponse').html("<div id='icmssuccess'></div>");
+	$('#icmssuccess').append("<img id='checkmark' src='../images/check.png' />");
+	$('#icmsresponse').append('finally: ' + str);
+}
+
+
+
+
+
+
+
+
+function showMessage(str)
+{
+	//$('.icmsresponse').remove(); // Remove previous status
+	//$('#icmsresponse').append('<img src="../images/loading.gif" name="load" id="load" alt="' + text(str) + '" />'); // Add loading gif
+	//$('#loading').show();
+	//$("#icmsresponse").effect("highlight", {color:theme.errorFlashColor}, 700);
+}
+
+
+
+
+function hideMessage(ms)
+{
+	setTimeout('resetMessage()', ms);
+}
+
+
+function resetMessage()
+{
+	$('#loading, #icmsresponse').hide();
+}
+</script>
+
+<!-- <div id="messagebar" class="right hide"></div> -->
+<!-- <div id="loading" class="right hide"><img src="<{$myurl}>/images/loading.gif"></div> -->
+
+<div id="icmsresponse"></div>
+<!-- <div id="msg" class="right hide"></div> -->
+<!-- <div id="loading" class="right hide"><img src="<{$myurl}>/images/loading.gif"></div> -->
+<!-- <div id="messagebar" class="right hide"></div> -->
+
+
+
+
+
+<div class="page_title">
+	<div class="left">
+		<h3><{$xoops_pagetitle}></h3>
+	</div>
+	<{*<div class="right">
+		<ul>
+			<{foreach from=$tag_list item=tag name=tag_list}>
+			<li><a href="index.php?kwd=<{$tag.name}>"><{$tag.name}></a></li>
+			<{/foreach}>
+			<li class="last"><a href="index.php">All</a></li>
+		</ul>
+	</div>*}>
+	<div class="clear"></div>
+</div>
+
+<!--  工作一覽 -->
+<div id="page_tasks">
+	<div id="tabs" class="tabs">
+		<div class="report right">
+			<{$smarty.const._AM_TODO_HAVE}> <span id="total"><{$task_count}></span> <{$smarty.const._AM_TODO_TASKS}>
+		</div>
+		<ul class="">
+			<li><a href="#newtask"><{$smarty.const._AM_TODO_ADD}></a></li>
+			<li><a href="#searchtask"><{$smarty.const._AM_TODO_SEARCH}></a></li>
+		</ul>
+		<div id="newtask">
+			<form name="post_task"  id="post_task" onsubmit="return submitNewTask()">
+				<select name="tag" style="">
+					<option value="" selected="selected">-----</option>
+					<{foreach from=$tag_list item=tag}>
+					<option value="<{$tag.name}>"><{$tag.name}></option>
+					<{/foreach}>
+				</select>
+				<input type="text" name="title" id="title" size="30" value="" />
+				<input type="hidden" name="op" id="op" value="add" />
+				<input type="submit" name="submit" value="<{$smarty.const._SUBMIT}>" />
+			</form>
+			<p>
+			<a href="#" id="compl_show" onclick="return filterCompleted(1)"><{$smarty.const._AM_TODO_COMPLETED}></a>
+			<a href="#" id="compl_hide" onclick="return filterCompleted(0)" class="hide"><{$smarty.const._AM_TODO_NOT_COMPLETED}></a>
+			</p>
+		</div>
+		<div name="searchtask" id="searchtask">
+			<form name="search_task"  id="search_task" onsubmit="return searchTasks()">
+				<input type="text" name="kwd" id="kwd" size="30" value="" />
+				<input type="hidden" name="op" id="op" value="search" />
+				<input type="submit" name="submit" value="<{$smarty.const._SUBMIT}>" />
+			</form>
+			<p><{$smarty.const._AM_TODO_SEARCH_KWD}> <span id="searchbarkeyword"></span></p>
+		</div>
+	</div><!-- /tabs -->
+	
+<!-- class="<{if $task.complete}>task-completed<{/if}>" -->
+
+	<!-- todo_list -->
+	<ul class="tasklist" id="tasklist">
+	<{foreach from=$task item=task}>
+		<li id="taskrow_<{$task.id}>" ondblclick="editTask(<{$task.id}>)">
+			<span class="task-actions">
+				<a href="#" onclick="return editTask(<{$task.id}>)"><{$smarty.const._EDIT}></a>
+				| <a href="#" onclick="return deleteTask(<{$task.id}>)"><{$smarty.const._DELETE}></a>
+			</span>
+			<input type="checkbox" onclick="completeTask(<{$task.id}>,this)"<{if $task.complete}> checked="checked"<{/if}> />
+			<span class="task-through">
+			<span class="task-prio <{$task.prio_class}>"><{$task.priority}></span>
+			<{if $task.tag != ''}><span class="task-title">[<{$task.tag}>]</span><{/if}>
+			<span class="task-title"><{$task.title}></span>
+			<span class="task-date"><{$task.published}></span>
+			<div class="task-note-block<{if $task.note == ''}> hide<{/if}>"><{$task.note}></div>
+			</span>
+		</li>
+	<{foreachelse}>
+		<li class="last">
+		<{if $smarty.get.compl}><{$smarty.const._AM_TODO_NO_COMPLETED_TASK}><{else}><{$smarty.const._AM_TODO_NO_TASK}><{/if}>
+		</li>
+	<{/foreach}>
+	</ul>
+	<{*
+	<div style="padding-top:10px;">
+		
+	</div>
+	*}>
+</div>
+
+<!--  編輯工作 -->
+<div id="page_taskedit" class="hide">
+
+	<div id="tabs2" class="tabs">
+		<ul class="">
+			<li><a href="#edittask"><{$smarty.const._AM_TODO_TASK_EDIT}></a></li>
+		</ul>
+		<div id="edittask">
+			<a href="#" onClick="return cancelEdit()"><{$smarty.const._AM_TODO_BACK_LIST}></a>
+		</div>
+	</div>
+
+	<form onSubmit="return saveTask()" name="taskform" id="taskform">
+	<input type="hidden" name="id" value="">
+	<table class="flickr_table" width="100%" cellpadding="0" cellspacing="0">
+		<tr>
+			<td width="20%"><{$smarty.const._AM_TODO_TASK_PRIORITY}></td>
+			<td width="80%">
+				<select name="prio" style="width: 50px;">
+					<option value="3">+3</option>
+					<option value="2">+2</option>
+					<option value="1">+1</option>
+					<option value="0" selected="selected">0</option>
+					<option value="-1">-1</option>
+					<option value="-2">-2</option>
+					<option value="-3">-3</option>
+				</select>
+			</td>
+		</tr>
+		<tr>
+			<td><{$smarty.const._AM_TODO_TAG}></td>
+			<td>
+				<select name="tag" style="">
+					<option value="" selected="selected">-----</option>
+					<{foreach from=$tag_list item=tag}>
+					<option value="<{$tag.name}>"><{$tag.name}></option>
+					<{/foreach}>
+				</select>
+			</td>
+		</tr>
+		<tr>
+			<td><{$smarty.const._AM_TODO_TASK_TITLE}></td>
+			<td><input type="text" name="title" value="" style="width: 250px;" maxlength="250"></td>
+		</tr>
+		<tr>
+			<td><{$smarty.const._AM_TODO_TASK_NOTE}></td>
+			<td><textarea name="note" cols="70" rows="6"></textarea></td>
+		</tr>
+		<tr>
+			<td colspan="2" align="center">
+			<input type="hidden" name="id" value="">
+			<input type="submit" name="submit" value="<{$smarty.const._SUBMIT}>">
+			<input type="button" name="cancel" value="<{$smarty.const._CANCEL}>" onclick="return cancelEdit()">
+			</td>
+		</tr>
+	</table>
+	</form>
+
+</div>
+
+
+<script type="text/javascript">
+	$(document).ready(function() {
+		$('ul.tasklist > li:odd').css('background', '#E9E9E9');
+	});
+</script>
+
+ 
